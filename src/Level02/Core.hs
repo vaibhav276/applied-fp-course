@@ -14,11 +14,13 @@ import qualified Data.ByteString.Lazy     as LBS
 import           Data.Either              (either)
 
 import           Data.Text                (Text)
-import           Data.Text.Encoding       (decodeUtf8)
+import           Data.Text.Encoding       (decodeUtf8, encodeUtf8)
 
-import           Level02.Types            (ContentType, Error, RqType,
+import           Level02.Types            (ContentType (..), Error (..), RqType (..),
                                            mkCommentText, mkTopic,
                                            renderContentType)
+
+import           Control.Applicative      (liftA2)
 
 -- |-------------------------------------------|
 -- |- Don't start here, go to Level02.Types!  -|
@@ -30,29 +32,25 @@ mkResponse
   -> ContentType
   -> LBS.ByteString
   -> Response
-mkResponse =
-  error "mkResponse not implemented"
+mkResponse s c = responseLBS s [("Content-Type ",renderContentType c)]
 
 resp200
   :: ContentType
   -> LBS.ByteString
   -> Response
-resp200 =
-  error "resp200 not implemented"
+resp200 = mkResponse status200
 
 resp404
   :: ContentType
   -> LBS.ByteString
   -> Response
-resp404 =
-  error "resp404 not implemented"
+resp404 = mkResponse status404
 
 resp400
   :: ContentType
   -> LBS.ByteString
   -> Response
-resp400 =
-  error "resp400 not implemented"
+resp400 = mkResponse status400
 
 -- |----------------------------------------------------------------------------------
 -- These next few functions will take raw request information and construct         --
@@ -68,23 +66,25 @@ mkAddRequest
   :: Text
   -> LBS.ByteString
   -> Either Error RqType
-mkAddRequest =
-  error "mkAddRequest not implemented"
-  where
-    -- This is a helper function to assist us in going from a Lazy ByteString, to a Strict Text
-    lazyByteStringToStrictText =
-      decodeUtf8 . LBS.toStrict
+mkAddRequest t b = let topic = mkTopic t
+                       comment = mkCommentText (lazyByteStringToStrictText b)
+                   in liftA2 AddRq topic comment
+
+-- This is a helper function to assist us in going from a Lazy ByteString, to a Strict Text
+lazyByteStringToStrictText :: LBS.ByteString -> Text
+lazyByteStringToStrictText = decodeUtf8 . LBS.toStrict
+
+textToLazyByteString :: Text -> LBS.ByteString
+textToLazyByteString = LBS.fromStrict . encodeUtf8
 
 mkViewRequest
   :: Text
   -> Either Error RqType
-mkViewRequest =
-  error "mkViewRequest not implemented"
+mkViewRequest = fmap ViewRq . mkTopic
 
 mkListRequest
   :: Either Error RqType
-mkListRequest =
-  error "mkListRequest not implemented"
+mkListRequest = Right ListRq
 
 -- |----------------------------------
 -- end of RqType creation functions --
@@ -93,8 +93,10 @@ mkListRequest =
 mkErrorResponse
   :: Error
   -> Response
-mkErrorResponse =
-  error "mkErrorResponse not implemented"
+mkErrorResponse (Err t) = mkResponse
+                            status400
+                            ContentTypeJson
+                            (textToLazyByteString t)
 
 -- | Use our ``RqType`` helpers to write a function that will take the input
 -- ``Request`` from the Wai library and turn it into something our application
@@ -102,10 +104,13 @@ mkErrorResponse =
 mkRequest
   :: Request
   -> IO ( Either Error RqType )
-mkRequest =
+mkRequest req =
   -- Remembering your pattern-matching skills will let you implement the entire
   -- specification in this function.
-  error "mkRequest not implemented"
+  case pathInfo req of
+    [topic:"add"] -> _add
+    [topic:"view"] -> _view
+    ["list"] -> _list
 
 -- | If we find that we need more information to handle a request, or we have a
 -- new type of request that we'd like to handle then we update the ``RqType``
